@@ -33,3 +33,32 @@ class SimCLR_loss(nn.Module):
         loss = torch.sum(loss_partial) / (2 * self.batch_size)
         print('NT-Xent loss', loss)
         return loss
+
+# Formula definition in paper
+class SCAN_loss(nn.Module):
+  def __init__(self, entropy_weight):
+    super(SCAN_loss, self).__init__()
+    self.softmax = nn.Softmax(dim=1)
+    self.entropy_weight = entropy_weight
+
+  def forward(self, anchors, neighbors):
+    # clustering fnc terminates in softmax fnc to perform soft assignment over clusters
+    batch, numClasses = anchors.size()
+    prob_anchor = self.softmax(anchors)
+    prob_neighbor = self.softmax(neighbors)
+
+    # dot product
+    dp = torch.bmm(prob_anchor.view(batch, 1, numClasses), prob_neighbor.view(batch, numClasses, 1)).squeeze() # returns [1xbatch]
+    # sum over all images in batch (sum over all neighbors(log(dot product)))  # THIS PART DFRNT
+    s = sum(torch.log(dp))
+    # take negative sum spread over dataset (divide by num imgs)
+    term1 = -(s/batch)
+
+    # Include entropy term to avoid clustering fnc from from assigning all samples to single cluster
+    prob_anchor_mean = torch.mean(prob_anchor, 0) # mean probability of sample being assigned to cluster
+    s1 = sum(prob_anchor_mean * torch.log(prob_anchor_mean))
+    entropy_term = self.entropy_weight * s1
+
+    # Total loss
+    loss = term1 + entropy_term
+    return loss

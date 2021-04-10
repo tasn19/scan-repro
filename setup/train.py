@@ -30,3 +30,33 @@ def SimCLR_train(dataloader, model, epoch, criterion, optimizer):
 
         if i % 10 == 0:
             progress.display(i)
+
+def SCAN_train(dataloader, model, epoch, criterion, optimizer):
+  # record progress
+  losses = AverageMeter('SCAN Loss', ':.4e')
+  progress = ProgressMeter(len(dataloader), [losses], prefix="Epoch: [{}]".format(epoch))
+
+  model.train()
+  for i, batch in enumerate(dataloader):
+    # forward pass
+    anchors = batch['anchorimg'].to(device, non_blocking=True) # 128 imgs
+    neighbors = batch['neighborimg'].to(device, non_blocking=True) # a neighbor for each img
+
+    # calculate gradient for backpropagation
+    output_anchors = model(anchors) # weights for training with each img. each of 128 (along len) has 10 rows
+    output_neighbors = model(neighbors) # weights for training with each neighbor
+
+    # calculate loss  CHECK/CHANGE
+    for anchor_out, neighbor_out in zip(output_anchors, output_neighbors):
+      # anchor_out & neighbor_out have shape [128,10]
+      loss = criterion(anchor_out, neighbor_out)
+
+    # update losses
+    losses.update(loss)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    if i % 25 == 0:
+      progress.display(i)

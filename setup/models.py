@@ -144,8 +144,25 @@ class SimclrContrastiveModel(nn.Module):
         features = F.normalize(features, dim=1)
         return features
 
+#----------------------------------------------------------------------
 
-def get_model(step):
+class ClusteringModel(nn.Module):
+  def __init__(self, backbone, numClasses, numHeads=1, backboneDim=512):
+    super(ClusteringModel, self).__init__()
+    self.backbone = backbone
+    self.backboneDim = backboneDim
+    self.numHeads = numHeads
+    self.cluster_head = nn.ModuleList([nn.Linear(self.backboneDim, numClasses) for _ in range(self.numHeads)])
+
+  def forward(self, x):
+      features = self.backbone(x)
+      out = [cluster_head(features) for cluster_head in self.cluster_head]
+
+      # add?
+      return out
+
+#------------------------------------------------------------------------------
+def get_model(step, pretrained_weights=None, numClasses=None):
     # Get backbone
     # import resnet18 backbone from torchvision:
     # resnet18 = torchvision.models.resnet18(pretrained=False)
@@ -156,6 +173,18 @@ def get_model(step):
     if step == "simclr":
         # If pretext task, get simclr contrastive model
         model = SimclrContrastiveModel(backbone)
-        # If scan or selflabel task, get clustering model
-    # will need to load pretrained weights for 2)scan & 3)selflabel
+    # If scan or selflabel task, get clustering model
+    if step == "scan" or step == "selflabel":
+        model = ClusteringModel(backbone, numClasses)  # removed numHeads
+
+    # Check for pretrained weights
+    if pretrained_weights is not None:
+        state = torch.load(pretrained_weights, map_location='cpu')
+        # In SCAN step, weights are transferred from pretext step
+        if step == 'scan':
+            weights = model_load_state_dict(state, strict=False)
+    # In selflabel step, weight are transferred from SCAN step
+    # ADD
     return model
+
+
