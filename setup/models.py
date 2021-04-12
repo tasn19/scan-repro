@@ -183,8 +183,12 @@ def get_model(step, pretrained_weights=None, numClasses=None):
         # In SCAN step, weights are transferred from pretext step
         if step == 'scan':
             weights = model_load_state_dict(state, strict=False)
-    # In selflabel step, weight are transferred from SCAN step
-    # ADD
+            # if strict=False, previous model and new model in which weights will be used don't have to be identical
+        # In selflabel step, weight are transferred from SCAN step         # NEW
+        if step == 'selflabel':
+            # CHECK: continue with best head and pop others, but only using one head??
+            weights = model_load_state_dict(state, strict=True)
+
     return model
 
 

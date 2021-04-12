@@ -5,6 +5,8 @@ import os
 import numpy as np
 import errno
 from augment import Augment, Cutout
+from scipy.optimize import linear_sum_assignment
+from sklearn import metrics
 
 # Create dictionary of transformation parameters (tp)
 tp = {"base": {
@@ -131,102 +133,178 @@ def contrastive_evaluate(val_loader, model, memory_bank):
     return top1.avg
 
 @torch.no_grad()
-def get_predictions(dataloader, model):
-  # predict class with neighbors
-  model.eval()
-  predictions = []
-  probability = []
-  neighbors = []
-  targets = []
-  for batch in dataloader:
-    imgs = batch["anchorimg"].to(device, non_blocking=True)
-    output = model(imgs)
-    print('batch output', len(output))
+def SCAN_evaluate(dataloader, model):
+    model.eval()
+    evalloss = []
+    for batch in dataloader:
+        imgs = batch["anchorimg"].to(device, non_blocking=True)
+        nb = batch["neighborimg"].to(device, non_blocking=True)
+        output = model(imgs)
+        outputnb = model(nb)
+
+        for anchor_out, neighbor_out in zip(output, outputnb):
+            # anchor_out & neighbor_out have shape [128,10]
+            print(anchor_out.size())
+            print(anchor_out.type())
+            loss = criterion(anchor_out, neighbor_out)
+            # loss.cpu()
+
+        print('evallossperbatch', loss)
+        evalloss.append(loss)
+        print(evalloss)
+
+    finalloss = min(evalloss)
+
+return finalloss
+
+@torch.no_grad()
+def get_predictions(dataloader, model): # for SCAN
+    # predict class with neighbors
+    model.eval()
+    predictions = []
+    probability = []
+    targets = []
+    evalloss = []
+
+    for batch in dataloader:
+        imgs = batch["anchorimg"].to(device, non_blocking=True)
+        output = model(imgs)
+
+        for i, out in enumerate(output):
+            pred = torch.argmax(out, dim=1).cpu()
+            predictions.append(pred)  # tensor[idx] crashes session
+            prob = F.softmax(out, dim=1).cpu()
+            probability.append(prob)
+
+        targets.append(batch["target"])
+
+    # concatenate batches
+    predictions = torch.cat(predictions)
+    probability = torch.cat(probability)
+    targets = torch.cat(targets, dim=0)
+
+    final_output = {'predictions': predictions, 'probabilities': probability, 'targets': targets}
+    return final_output
+
+@torch.no_grad()
+def get_predictions_slbl(dataloader, model):
+    # predict class with neighbors
+    model.eval()
+    predictions = []
+    probability = []
+    targets = []
+    evalloss = []
+
+    for i, (ims, lbls) in enumerate(dataloader):
+        imgs = ims.to(device, non_blocking=True)
+        output = model(imgs)
 
     for i, out in enumerate(output):
-      predictions.append([torch.argmax(out, dim=1)]) # CHECK
-      probability.append([F.softmax(out, dim=1)])
-    targets.append(batch["target"])
-    neighbors.append(batch["possible_neighbors"])
+        pred = torch.argmax(out, dim=1).cpu()
+        predictions.append(pred)  # tensor[idx] crashes session
+        prob = F.softmax(out, dim=1).cpu()
+        probability.append(prob)
 
-  # send to cpu
-  predictions = [torch.cat(pred_, dim = 0).cpu() for pred_ in predictions]
-  probability = [torch.cat(prob_, dim=0).cpu() for prob_ in probability]
-  neighbors = torch.cat(neighbors, dim=0)
-  targets = torch.cat(targets, dim=0)
+    targets.append(lbls)
 
-  final_output = [{'predictions': pred_, 'probabilities': prob_, 'targets': targets, 'neighbors': neighbors} for pred_, prob_ in zip(predictions, probability)]
-  return final_output
+    # concatenate batches
+    predictions = torch.cat(predictions)
+    probability = torch.cat(probability)
+    targets = torch.cat(targets, dim=0)
 
-def SCAN_evaluate(predictions): # if this ok, combine with get_predictions
-  probability = predictions['probabilities']
-  neighbors = predictions['neighbors']
-  loss = SCAN_loss(probability, neighbors)
-  lowest_loss = np.min(loss)
-  return loss, lowest_loss
+    final_output = {'predictions': predictions, 'probabilities': probability, 'targets': targets}
+    return final_output
 
-# Hungarian matching algorithm - paper code - needs edits
-  @torch.no_grad()
-  def hungarian_evaluate(subhead_index, all_predictions, class_names=None,
-                         compute_purity=True, compute_confusion_matrix=True,
-                         confusion_matrix_file=None):
-      # Evaluate model based on hungarian matching between predicted cluster assignment and gt classes.
-      # This is computed only for the passed subhead index.
+# paper code
+def confusion_matrix(predictions, gt, class_names, output_file=None):
+    # Plot confusion_matrix and store result to output_file
+    import sklearn.metrics
+    import matplotlib.pyplot as plt
+    confusion_matrix = sklearn.metrics.confusion_matrix(gt, predictions)
+    confusion_matrix = confusion_matrix / np.sum(confusion_matrix, 1)
 
-      # Hungarian matching
-      head = all_predictions[subhead_index]
-      targets = head['targets'].to(device)
-      predictions = head['predictions'].to(device)
-      probs = head['probabilities'].to(device)
-      num_classes = torch.unique(targets).numel()
-      num_elems = targets.size(0)
+    fig, axes = plt.subplots(1)
+    plt.imshow(confusion_matrix, cmap='Blues')
+    axes.set_xticks([i for i in range(len(class_names))])
+    axes.set_yticks([i for i in range(len(class_names))])
+    axes.set_xticklabels(class_names, ha='right', fontsize=8, rotation=40)
+    axes.set_yticklabels(class_names, ha='right', fontsize=8)
 
-      match = _hungarian_match(predictions, targets, preds_k=num_classes, targets_k=num_classes)
-      reordered_preds = torch.zeros(num_elems, dtype=predictions.dtype).cuda()
-      for pred_i, target_i in match:
-          reordered_preds[predictions == int(pred_i)] = int(target_i)
+    for (i, j), z in np.ndenumerate(confusion_matrix):
+        if i == j:
+            axes.text(j, i, '%d' % (100 * z), ha='center', va='center', color='white', fontsize=6)
+        else:
+            pass
 
-      # Gather performance metrics
-      acc = int((reordered_preds == targets).sum()) / float(num_elems)
-      nmi = metrics.normalized_mutual_info_score(targets.cpu().numpy(), predictions.cpu().numpy())
-      ari = metrics.adjusted_rand_score(targets.cpu().numpy(), predictions.cpu().numpy())
+    plt.tight_layout()
+    if output_file is None:
+        plt.show()
+    else:
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
 
-      _, preds_top5 = probs.topk(5, 1, largest=True)
-      reordered_preds_top5 = torch.zeros_like(preds_top5)
-      for pred_i, target_i in match:
-          reordered_preds_top5[preds_top5 == int(pred_i)] = int(target_i)
-      correct_top5_binary = reordered_preds_top5.eq(targets.view(-1, 1).expand_as(reordered_preds_top5))
-      top5 = float(correct_top5_binary.sum()) / float(num_elems)
+# Hungarian matching algorithm - paper code
+@torch.no_grad()   # removed subhead_index parameter
+def hungarian_evaluate(all_predictions, class_names=None,
+                     compute_purity=True, compute_confusion_matrix=True,
+                     confusion_matrix_file=None):
+  # Evaluate model based on hungarian matching between predicted cluster assignment and gt classes.
+  # This is computed only for the passed subhead index.
 
-      # Compute confusion matrix
-      if compute_confusion_matrix:
-          confusion_matrix(reordered_preds.cpu().numpy(), targets.cpu().numpy(),
-                           class_names, confusion_matrix_file)
+  # Hungarian matching
+  head = all_predictions# removed subhead_index since only using one head
+  targets = head['targets'].to(device)
+  predictions = head['predictions'].to(device)
+  probs = head['probabilities'].to(device)
+  num_classes = torch.unique(targets).numel()
+  num_elems = targets.size(0)
 
-      return {'ACC': acc, 'ARI': ari, 'NMI': nmi, 'ACC Top-5': top5, 'hungarian_match': match}
+  match = _hungarian_match(predictions, targets, preds_k=num_classes, targets_k=num_classes)
+  reordered_preds = torch.zeros(num_elems, dtype=predictions.dtype).cuda()
+  for pred_i, target_i in match:
+      reordered_preds[predictions == int(pred_i)] = int(target_i)
 
-  @torch.no_grad()
-  def _hungarian_match(flat_preds, flat_targets, preds_k, targets_k):
-      # Based on implementation from IIC
-      num_samples = flat_targets.shape[0]
+  # Gather performance metrics
+  acc = int((reordered_preds == targets).sum()) / float(num_elems)
+  nmi = metrics.normalized_mutual_info_score(targets.cpu().numpy(), predictions.cpu().numpy())
+  ari = metrics.adjusted_rand_score(targets.cpu().numpy(), predictions.cpu().numpy())
 
-      assert (preds_k == targets_k)  # one to one
-      num_k = preds_k
-      num_correct = np.zeros((num_k, num_k))
+  _, preds_top5 = probs.topk(5, 1, largest=True)
+  reordered_preds_top5 = torch.zeros_like(preds_top5)
+  for pred_i, target_i in match:
+      reordered_preds_top5[preds_top5 == int(pred_i)] = int(target_i)
+  correct_top5_binary = reordered_preds_top5.eq(targets.view(-1, 1).expand_as(reordered_preds_top5))
+  top5 = float(correct_top5_binary.sum()) / float(num_elems)
 
-      for c1 in range(num_k):
-          for c2 in range(num_k):
-              # elementwise, so each sample contributes once
-              votes = int(((flat_preds == c1) * (flat_targets == c2)).sum())
-              num_correct[c1, c2] = votes
+  # Compute confusion matrix
+  if compute_confusion_matrix:
+      confusion_matrix(reordered_preds.cpu().numpy(), targets.cpu().numpy(),
+                       class_names, confusion_matrix_file)
 
-      # num_correct is small
-      match = linear_sum_assignment(num_samples - num_correct)
-      match = np.array(list(zip(*match)))
+  return {'ACC': acc, 'ARI': ari, 'NMI': nmi, 'ACC Top-5': top5, 'hungarian_match': match}
 
-      # return as list of tuples, out_c to gt_c
-      res = []
-      for out_c, gt_c in match:
-          res.append((out_c, gt_c))
+@torch.no_grad()
+def _hungarian_match(flat_preds, flat_targets, preds_k, targets_k):
+  # Based on implementation from IIC
+  num_samples = flat_targets.shape[0]
 
-      return res
+  assert (preds_k == targets_k)  # one to one
+  num_k = preds_k
+  num_correct = np.zeros((num_k, num_k))
+
+  for c1 in range(num_k):
+      for c2 in range(num_k):
+          # elementwise, so each sample contributes once
+          votes = int(((flat_preds == c1) * (flat_targets == c2)).sum())
+          num_correct[c1, c2] = votes
+
+  # num_correct is small
+  match = linear_sum_assignment(num_samples - num_correct)
+  match = np.array(list(zip(*match)))
+
+  # return as list of tuples, out_c to gt_c
+  res = []
+  for out_c, gt_c in match:
+      res.append((out_c, gt_c))
+
+  return res

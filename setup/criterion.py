@@ -62,3 +62,31 @@ class SCAN_loss(nn.Module):
     # Total loss
     loss = term1 + entropy_term
     return loss
+
+class CE_loss(nn.Module):
+  def __init__(self, threshold):
+    super(CE_loss, self).__init__()
+    self.softmax = nn.Softmax(dim=1)
+    self.threshold = threshold
+
+  def forward(self, images, augmented_images):
+    images_prob = self.softmax(images)
+    batch, cls = images_prob.size()
+    maxprob, lbl = torch.max(images_prob, 1)
+    mask = maxprob > self.threshold # create mask for probabilities higher than threshold
+    # find classified labels with probability greater than threshold
+    maskedlbl = torch.masked_select(lbl, mask)
+
+    # Apply weight to cross-entropy loss to compensate for imbalance between confident samples across clusters
+    # class weights are inversely proportional to num occurrences in batch after thresholding
+    idx, counts = torch.unique(maskedlbl, return_counts = True)
+    n = maskedlbl.size(0)
+    occurence = counts.int()/n # occurence of label over total labels with prob above threshold
+    freq = 1/occurence
+    weight = torch.ones(cls).to(device)
+    weight[idx] = freq
+
+    b,c = augmented_images.size()
+    ce_input = torch.masked_select(augmented_images, mask.view(b, 1)).view(n, c)
+    ce_loss = F.cross_entropy(ce_input, maskedlbl, weight=weight, reduction='mean')
+    return ce_loss

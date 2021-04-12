@@ -60,3 +60,34 @@ def SCAN_train(dataloader, model, epoch, criterion, optimizer):
 
     if i % 25 == 0:
       progress.display(i)
+
+
+def selflabel_train(dataloader, model, epoch, criterion, optimizer):
+    # record progress
+    losses = AverageMeter('Self Label Loss', ':.4e')
+    progress = ProgressMeter(len(dataloader), [losses], prefix="Epoch: [{}]".format(epoch))
+
+    model.train()
+
+    for i, (ims, aug_ims, lbls) in enumerate(dataloader):
+        # print(ims.size())
+        imgs = ims.to(device, non_blocking=True)
+        aug_imgs = aug_ims.to(device, non_blocking=True)
+
+        with torch.no_grad():
+            output_imgs = model(imgs)
+            output_imgs = output_imgs[0]  # tensor size [batchsize, numClasses]
+        output_aug = model(aug_imgs)
+        output_aug = output_aug[0]  # tensor size [batchsize, numClasses]
+
+        loss = criterion(output_imgs, output_aug)
+
+        # update losses
+        losses.update(loss.item())
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if i % 10 == 0:
+            progress.display(i)
