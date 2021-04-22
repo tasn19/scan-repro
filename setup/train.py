@@ -21,6 +21,7 @@ def SimCLR_train(dataloader, model, epoch, criterion, optimizer):
         z_i = model(x_i)  # try concatenation x_i and x_j?
         z_j = model(x_j)
         loss = criterion(z_i, z_j)
+        #tloss = loss.item()
         # update losses
         losses.update(loss.item())
 
@@ -28,10 +29,10 @@ def SimCLR_train(dataloader, model, epoch, criterion, optimizer):
         loss.backward()
         optimizer.step()
 
-        if i % 10 == 0:
+        if i % 25 == 0:
             progress.display(i)
 
-def SCAN_train(dataloader, model, epoch, criterion, optimizer):
+def SCAN_train(dataloader, model, epoch, criterion, optimizer, device):
   # record progress
   losses = AverageMeter('SCAN Loss', ':.4e')
   progress = ProgressMeter(len(dataloader), [losses], prefix="Epoch: [{}]".format(epoch))

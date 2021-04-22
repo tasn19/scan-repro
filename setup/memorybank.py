@@ -39,20 +39,19 @@ class MemoryBank(object):
 
     def mine_nearest_neighbors(self, k, calculate_accuracy=True):
         # use faiss library for efficient knn mining
-        import faiss-gpu
         features = self.features.cpu().numpy()
         n, dim = features.shape[0], features.shape[1]
         # to use GPU
         index = faiss.IndexFlatIP(dim)
         index = faiss.index_cpu_to_all_gpus(index)
         index.add(features)
-        distances, indices = index.search(features, topk + 1)  # Sample included in search
+        distances, indices = index.search(features, k + 1)  # Sample included in search
 
         # evaluate
         if calculate_accuracy:
             targets = self.targets.cpu().numpy()
             neighbor_targets = np.take(targets, indices[:, 1:], axis=0)  # Exclude sample itself for eval
-            anchor_targets = np.repeat(targets.reshape(-1, 1), topk, axis=1)
+            anchor_targets = np.repeat(targets.reshape(-1, 1), k, axis=1)
             accuracy = np.mean(neighbor_targets == anchor_targets)
             return indices, accuracy
 

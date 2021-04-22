@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 import os
@@ -19,58 +21,54 @@ tp = {"base": {
     "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)}},
     "validate": {
       "Cropsize": 32,
-      "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)}}
+      "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)}},
     "scan": {
      "Cropsize": 32,
-     "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)}},
+     "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)},
      "NumStrongAugments": 4,
-     "Cutout": {"numholes": 1, "length": 16, "random": True}
+     "Cutout": {"numholes": 1, "length": 16, "random": True}}
     }
 
 # Transformations to pre-process image  # authors code: get_train_transformations in common_config
 def get_transform(step):
     # step options: 'base', 'simclr', 'scan'
     if step == "base":
-    transform = transforms.Compose(
-      [transforms.RandomResizedCrop(tp[step]["RandomResizedCrop"]["size"], tp[step]["RandomResizedCrop"]["scale"]),
-      transforms.RandomHorizontalFlip(),
-      transforms.ToTensor(),
-      transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"])])
+        transform = transforms.Compose(
+          [transforms.RandomResizedCrop(tp[step]["RandomResizedCrop"]["size"], tp[step]["RandomResizedCrop"]["scale"]),
+          transforms.RandomHorizontalFlip(),
+          transforms.ToTensor(),
+          transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"])])
 
     if step == "simclr": # original simclr does not use Gaussian blur for CIFAR10
-    transform = transforms.Compose(
-        [transforms.RandomResizedCrop(tp[step]["RandomResizedCrop"]["size"], tp[step]["RandomResizedCrop"]["scale"]),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomApply([
-            transforms.ColorJitter(tp[step]["RandomColorJitter"]["brightness"], tp[step]["RandomColorJitter"]["contrast"],
-                                  tp[step]["RandomColorJitter"]["saturation"], tp[step]["RandomColorJitter"]["hue"])],
-                                tp[step]["RandomColorJitter"]["p"]),
-        transforms.RandomGrayscale(tp[step]["RandomGrayscale"]["p"]),
-        transforms.ToTensor(),
-        transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"])]
-    )
-
-    if step == "validate":
-    transform = transforms.Compose([
-            transforms.CenterCrop(tp[step]["Cropsize"]),
+        transform = transforms.Compose(
+            [transforms.RandomResizedCrop(tp[step]["RandomResizedCrop"]["size"], tp[step]["RandomResizedCrop"]["scale"]),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomApply([
+                transforms.ColorJitter(tp[step]["RandomColorJitter"]["brightness"], tp[step]["RandomColorJitter"]["contrast"],
+                                      tp[step]["RandomColorJitter"]["saturation"], tp[step]["RandomColorJitter"]["hue"])],
+                                    tp[step]["RandomColorJitter"]["p"]),
+            transforms.RandomGrayscale(tp[step]["RandomGrayscale"]["p"]),
             transforms.ToTensor(),
             transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"])])
+
+    if step == "validate":
+        transform = transforms.Compose([
+                transforms.CenterCrop(tp[step]["Cropsize"]),
+                transforms.ToTensor(),
+                transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"])])
 
     # Augmentations for clustering and self-labeling steps: four randomly selected transformations from RandAugment.
     if step == "scan":
         transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(tp[step]["Cropsize"]),
-            Augment(tp[step]["NumStrongAugments"]]),
+            Augment(tp[step]["NumStrongAugments"]),
                     transforms.ToTensor(),
                     transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"]),
                     Cutout(n_holes=tp[step]["Cutout"]["numholes"],
                            length=tp[step]["Cutout"]["length"],
                            random=tp[step]["Cutout"]["random"])])
-        ])
-
-
-  return transform
+    return transform
 
 # paper code
 class AverageMeter(object):
@@ -155,7 +153,7 @@ def SCAN_evaluate(dataloader, model):
 
     finalloss = min(evalloss)
 
-return finalloss
+    return finalloss
 
 @torch.no_grad()
 def get_predictions(dataloader, model): # for SCAN

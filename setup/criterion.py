@@ -31,7 +31,7 @@ class SimCLR_loss(nn.Module):
 
         loss_partial = -torch.log(nominator / torch.sum(denominator, dim=1))
         loss = torch.sum(loss_partial) / (2 * self.batch_size)
-        print('NT-Xent loss', loss)
+        #print('NT-Xent loss', loss)
         return loss
 
 # Formula definition in paper

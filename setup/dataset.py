@@ -1,4 +1,6 @@
+import torch
 from torch.utils.data import Dataset
+import numpy as np
 
 # Build a custom dataset containing a set of images and a set of the same images in augmented form
 class CustomDataset(Dataset):
