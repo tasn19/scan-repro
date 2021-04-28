@@ -10,7 +10,11 @@ SCAN is an unsupervised approach for image classification introduced by Van Gans
 This repo contains a reimplementation of SCAN for a reproduction study aimed to reproduce performance results on CIFAR10 to within the range of the published results. Parts of the original implementation are reused. 
 
 Setup Instructions:
-Open the SCAN_repro Colab notebook and run the sections in order. Connect the notebook to GPU and mount to Google drive to store datasets and file. The notebook imports the setup files provided here containing required functions. Run the steps in order. Alternatively, if previous model weights are available, each step in the approach can be run independently.
+1. Open the SCAN_repro Colab notebook and run the sections in order. 
+2. Connect the notebook to GPU.
+3. Mount to Google drive to store datasets and files. 
+4. The notebook imports the setup files provided here containing required functions. 
+5. Run the steps in order. Alternatively, if previous model weights are available, each step in the approach can be run independently.
 
 This SCAN reimplementation achieved classification accuracy of 87.2% on CIFAR10.
 
