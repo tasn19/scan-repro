@@ -26,12 +26,16 @@ tp = {"base": {
      "Cropsize": 32,
      "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)},
      "NumStrongAugments": 4,
-     "Cutout": {"numholes": 1, "length": 16, "random": True}}
+     "Cutout": {"numholes": 1, "length": 16, "random": True}},
+    "scan_extra": {
+      "RandomColorJitter":{"brightness": 0.5, "contrast": 0.5, "saturation": 0.5, "hue": 0.5, "p": 0.8},
+      "RandomGrayscale":{"p": 0.2},
+      "Normalize": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2023, 0.1994, 0.2010)}}
     }
 
-# Transformations to pre-process image  # authors code: get_train_transformations in common_config
+# Transformations to pre-process image
 def get_transform(step):
-    # step options: 'base', 'simclr', 'scan'
+    # step options: 'base', 'simclr', 'scan', 'scan_extra'
     if step == "base":
         transform = transforms.Compose(
           [transforms.RandomResizedCrop(tp[step]["RandomResizedCrop"]["size"], tp[step]["RandomResizedCrop"]["scale"]),
@@ -68,6 +72,20 @@ def get_transform(step):
                     Cutout(n_holes=tp[step]["Cutout"]["numholes"],
                            length=tp[step]["Cutout"]["length"],
                            random=tp[step]["Cutout"]["random"])])
+    # Stretch goal
+    if step == "scan_extra":
+        transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomApply([
+                transforms.ColorJitter(tp[step]["RandomColorJitter"]["brightness"],
+                                       tp[step]["RandomColorJitter"]["contrast"],
+                                       tp[step]["RandomColorJitter"]["saturation"],
+                                       tp[step]["RandomColorJitter"]["hue"])],
+                tp[step]["RandomColorJitter"]["p"]),
+            transforms.RandomGrayscale(tp[step]["RandomGrayscale"]["p"]),
+            transforms.ToTensor(),
+            transforms.Normalize(tp[step]["Normalize"]["mean"], tp[step]["Normalize"]["std"])
+        ])
     return transform
 
 # paper code
@@ -112,7 +130,6 @@ class ProgressMeter(object):
 
 
 # Evaluate -------------------------------------------------------
-# paper code
 @torch.no_grad()
 def contrastive_evaluate(val_loader, model, memory_bank):
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -131,7 +148,7 @@ def contrastive_evaluate(val_loader, model, memory_bank):
     return top1.avg
 
 @torch.no_grad()
-def SCAN_evaluate(dataloader, model):
+def SCAN_evaluate(dataloader, model, criterion, device):
     model.eval()
     evalloss = []
     for batch in dataloader:
@@ -142,27 +159,21 @@ def SCAN_evaluate(dataloader, model):
 
         for anchor_out, neighbor_out in zip(output, outputnb):
             # anchor_out & neighbor_out have shape [128,10]
-            print(anchor_out.size())
-            print(anchor_out.type())
             loss = criterion(anchor_out, neighbor_out)
-            # loss.cpu()
 
-        print('evallossperbatch', loss)
         evalloss.append(loss)
-        print(evalloss)
 
     finalloss = min(evalloss)
 
     return finalloss
 
 @torch.no_grad()
-def get_predictions(dataloader, model): # for SCAN
+def get_predictions(dataloader, model, device): # for SCAN
     # predict class with neighbors
     model.eval()
     predictions = []
     probability = []
     targets = []
-    evalloss = []
 
     for batch in dataloader:
         imgs = batch["anchorimg"].to(device, non_blocking=True)
@@ -185,13 +196,12 @@ def get_predictions(dataloader, model): # for SCAN
     return final_output
 
 @torch.no_grad()
-def get_predictions_slbl(dataloader, model):
+def get_predictions_slbl(dataloader, model, device): # for self-label
     # predict class with neighbors
     model.eval()
     predictions = []
     probability = []
     targets = []
-    evalloss = []
 
     for i, (ims, lbls) in enumerate(dataloader):
         imgs = ims.to(device, non_blocking=True)
@@ -243,7 +253,7 @@ def confusion_matrix(predictions, gt, class_names, output_file=None):
 
 # Hungarian matching algorithm - paper code
 @torch.no_grad()   # removed subhead_index parameter
-def hungarian_evaluate(all_predictions, class_names=None,
+def hungarian_evaluate(device, all_predictions, class_names=None,
                      compute_purity=True, compute_confusion_matrix=True,
                      confusion_matrix_file=None):
   # Evaluate model based on hungarian matching between predicted cluster assignment and gt classes.
@@ -280,6 +290,7 @@ def hungarian_evaluate(all_predictions, class_names=None,
                        class_names, confusion_matrix_file)
 
   return {'ACC': acc, 'ARI': ari, 'NMI': nmi, 'ACC Top-5': top5, 'hungarian_match': match}
+
 
 @torch.no_grad()
 def _hungarian_match(flat_preds, flat_targets, preds_k, targets_k):

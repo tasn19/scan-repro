@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import faiss
 
 # paper code
 class MemoryBank(object):
@@ -39,6 +40,7 @@ class MemoryBank(object):
 
     def mine_nearest_neighbors(self, k, calculate_accuracy=True):
         # use faiss library for efficient knn mining
+        import faiss
         features = self.features.cpu().numpy()
         n, dim = features.shape[0], features.shape[1]
         # to use GPU
@@ -46,6 +48,10 @@ class MemoryBank(object):
         index = faiss.index_cpu_to_all_gpus(index)
         index.add(features)
         distances, indices = index.search(features, k + 1)  # Sample included in search
+        # features are the query_vector (# items in dataset x dimension), so we have queries = num imgs
+        # index.search returns the indices: row i contains the IDs of the neighbors of query vector i, sorted by increasing distance
+        # and corresponding squared distances
+        # IDs are the vector ordinals - the first vector gets 0, the second 1, etc.
 
         # evaluate
         if calculate_accuracy:

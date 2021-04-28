@@ -13,6 +13,7 @@ class CustomDataset(Dataset):
         if step == "simclr":
             self.img_transform = base_transform
             self.augment_transform = transform
+
         else:
             self.img_transform = transform
             self.augment_transform = transform
@@ -38,11 +39,11 @@ class NNDataset(Dataset):
             self.anchor_transform = base_transform
             self.neighbor_transform = transform
 
-        else:  # WHAT IS THIS FOR??
+        else:
             self.anchor_transform = transform
             self.neighbor_transform = transform
 
-        dataset.transform = None  # CHECK mv up
+        dataset.transform = None
 
     def __len__(self):
         return len(self.dataset)

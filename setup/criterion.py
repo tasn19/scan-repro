@@ -83,7 +83,7 @@ class CE_loss(nn.Module):
     n = maskedlbl.size(0)
     occurence = counts.int()/n # occurence of label over total labels with prob above threshold
     freq = 1/occurence
-    weight = torch.ones(cls).to(device)
+    weight = torch.ones(cls).cuda() # make to device
     weight[idx] = freq
 
     b,c = augmented_images.size()

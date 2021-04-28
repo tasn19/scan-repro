@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # ResNet-18 backbone: This is paper's version. Also used here: https://github.com/microsoft/snca.pytorch/blob/master/models/resnet_cifar.py
-# dfrnt from torchvision model, CHECK
 """
 This code is based on the Torchvision repository, which was licensed under the BSD 3-Clause.
 """
@@ -132,10 +131,8 @@ class SimclrContrastiveModel(nn.Module):
         super(SimclrContrastiveModel, self).__init__()
         self.backbone = backbone
         self.backboneDim = backboneDim
-        self.head = head  # need? if linear not used, remove
-        # simCLR uses 2 layer MLP head --- check paper
-        # nn.Linear(input sample size, output sample size)
-        # self.contrastiveHead = nn.Linear(self.backboneDim, featuresDim) # just for testing
+        self.head = head
+        # simCLR uses 2 layer MLP head
         self.contrastiveHead = nn.Sequential(nn.Linear(self.backboneDim, self.backboneDim),
                                              nn.ReLU(), nn.Linear(self.backboneDim, featuresDim))
 
@@ -157,36 +154,29 @@ class ClusteringModel(nn.Module):
   def forward(self, x):
       features = self.backbone(x)
       out = [cluster_head(features) for cluster_head in self.cluster_head]
-
-      # add?
       return out
 
 #------------------------------------------------------------------------------
 def get_model(step, pretrained_weights=None, numClasses=None):
     # Get backbone
-    # import resnet18 backbone from torchvision:
-    # resnet18 = torchvision.models.resnet18(pretrained=False)
-    # resnet18_ft = nn.Sequential(*(list(resnet18.children())[0:9])) # remove last layer and retain feature extractor
     backbone = resnet18a()
-    # backbone = resnet18_ft
 
     if step == "simclr":
         # If pretext task, get simclr contrastive model
         model = SimclrContrastiveModel(backbone)
     # If scan or selflabel task, get clustering model
     if step == "scan" or step == "selflabel":
-        model = ClusteringModel(backbone, numClasses)  # removed numHeads
+        model = ClusteringModel(backbone, numClasses)
 
-    # Check for pretrained weights
+    # Check for pretrained weights ...fix
     if pretrained_weights is not None:
         state = torch.load(pretrained_weights, map_location='cpu')
         # In SCAN step, weights are transferred from pretext step
         if step == 'scan':
             weights = model.load_state_dict(state, strict=False)
             # if strict=False, previous model and new model in which weights will be used don't have to be identical
-        # In selflabel step, weight are transferred from SCAN step         # NEW
+        # In selflabel step, weight are transferred from SCAN step
         if step == 'selflabel':
-            # CHECK: continue with best head and pop others, but only using one head??
             weights = model.load_state_dict(state, strict=True)
 
     return model
