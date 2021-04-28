@@ -7,7 +7,7 @@ SCAN is an unsupervised approach for image classification introduced by Van Gans
 2. SCAN Semantic Clustering Step: The semantically meaningful nearest neighbors found in the pretext step are used as a prior for semantic clustering. An image and and its nearest neighbors are classified together using the novel SCAN loss function. 
 3. Self-labeling Step: Classification errors caused by neighbors with less-confident predictions are corrected by applying a threshold to filter them out and the network is updated using a weighted cross entropy loss.
 
-This repo contains a reimplementation of SCAN for a reproduction study aimed to reproduce performance results on CIFAR10 to within the range of the published results. Parts of the original implementation are reused. 
+This repo contains a reimplementation of SCAN for a reproduction study aimed to reproduce performance results on CIFAR10 to within the range of the published results. Parts of the original implementation are reused. See the presentation slides for details on the project. 
 
 Setup Instructions:
 1. Open the SCAN_repro Colab notebook and run the sections in order. 
